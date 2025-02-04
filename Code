@@ -1,226 +1,210 @@
-#include <ESP8266WiFi.h> 
-#include <ESP8266HTTPClient.h> 
-#include <SPI.h> 
-#include <MFRC522.h> 
-#include <Wire.h> 
-#include <LiquidCrystal_I2C.h> 
-#define TOTAL_SLOTS 50   
-
-const int TRIG_PINS[TOTAL_SLOTS] = {5, 6, 7, 8, 9};   
-
-const int ECHO_PINS[TOTAL_SLOTS] = {4, 3, 2, 1, 0};   
-
-const int LED_RED_PINS[TOTAL_SLOTS] = {15, 14, 13, 12, 11};    
-
-const int LED_GREEN_PINS[TOTAL_SLOTS] = {10, 9, 8, 7, 6};      
-
- 
-
-#define SS_PIN 15        
-
-#define RST_PIN 16       
-
-MFRC522 rfid(SS_PIN, RST_PIN); 
-
- 
-
-const char* ssid = "Your_WiFi_SSID";       
-
-const char* password = "Your_WiFi_Password";   
-
-const char* serverURL = "http://your-cloud-server.com/upload";  
-
- 
-
-WiFiClient client; 
-
-LiquidCrystal_I2C lcd(0x27, 16, 2); // LCD at I2C address 0x27, 16x2 display 
-
- 
-
-void setup() { 
-
-    Serial.begin(115200); 
-
-    SPI.begin(); 
-
-    rfid.PCD_Init(); 
-
-    lcd.begin(); 
-
-    lcd.backlight(); 
-
-    lcd.setCursor(0, 0); 
-
-    lcd.print("Smart Parking"); 
-
-    delay(2000); 
-
-    lcd.clear(); 
-
- 
-
-    for (int i = 0; i < TOTAL_SLOTS; i++) { 
-
-        pinMode(TRIG_PINS[i], OUTPUT); 
-
-        pinMode(ECHO_PINS[i], INPUT); 
-
-        pinMode(LED_RED_PINS[i], OUTPUT); 
-
-        pinMode(LED_GREEN_PINS[i], OUTPUT); 
-
-    } 
-
- 
-
-    WiFi.begin(ssid, password); 
-
-    while (WiFi.status() != WL_CONNECTED) { 
-
-        delay(1000); 
-
-        Serial.println("Connecting to WiFi..."); 
-  lcd.setCursor(0, 0); 
-
-        lcd.print("Connecting WiFi..."); 
-
-    } 
-
-    Serial.println("Connected to WiFi!"); 
-
-    lcd.clear(); 
-
-    lcd.setCursor(0, 0); 
-
-    lcd.print("WiFi Connected!"); 
-
-    delay(1000); 
-
-} 
-
- 
-
-void loop() { 
-
-    bool slotOccupied[TOTAL_SLOTS] = {false}; 
-
-    int availableSlot = -1; 
-
- 
-
-    for (int i = 0; i < TOTAL_SLOTS; i++) { 
-
-        digitalWrite(TRIG_PINS[i], LOW); 
-
-        delayMicroseconds(2); 
-
-        digitalWrite(TRIG_PINS[i], HIGH); 
-
-        delayMicroseconds(10); 
-
-        digitalWrite(TRIG_PINS[i], LOW); 
-
- 
-
-        long duration = pulseIn(ECHO_PINS[i], HIGH); 
-
-        int distance = duration * 0.034 / 2; 
-
- 
-
-        slotOccupied[i] = (distance < 40); 
-
- 
-
-        if (slotOccupied[i]) { 
-
-            digitalWrite(LED_RED_PINS[i], HIGH); 
-
-            digitalWrite(LED_GREEN_PINS[i], LOW); 
-
-            Serial.print("Slot "); 
-
-            Serial.print(i + 1); 
-
-            Serial.println(" is Occupied"); 
-
-        } else { 
-
-            digitalWrite(LED_RED_PINS[i], LOW); 
-
-            digitalWrite(LED_GREEN_PINS[i], HIGH); 
-
-            Serial.print("Slot "); 
-
-            Serial.print(i + 1); 
-
-            Serial.println(" is Available"); 
-
-            if (availableSlot == -1) { 
-
-                availableSlot = i + 1; 
-
-            } 
-
-        } 
-
-    } 
-
-    // Display the first available slot on LCD 
-
-    lcd.clear(); 
-
-    lcd.setCursor(0, 0); 
-    lcd.print("Parking Status:"); 
-
-    if (availableSlot != -1) { 
-        lcd.setCursor(0, 1); 
-        lcd.print("Slot Free: "); 
-        lcd.print(availableSlot); 
-    } else { 
-
-        lcd.setCursor(0, 1); 
-        lcd.print("No Slots Free!"); 
-    } 
- 
-    // RFID Detection 
-
-    String vehicleID = ""; 
-
-    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) { 
-
-        Serial.print("Vehicle ID: "); 
-
-        for (byte i = 0; i < rfid.uid.size; i++) { 
-
-            Serial.print(rfid.uid.uidByte[i], HEX); 
-
-            vehicleID += String(rfid.uid.uidByte[i], HEX); 
-        } 
-        Serial.println(); 
-        rfid.PICC_HaltA(); 
-    } 
-
-
-    // Send data to cloud server 
-
-    if (WiFi.status() == WL_CONNECTED) { 
-
-        HTTPClient http; 
-
-        http.begin(client, serverURL); 
-
-        http.addHeader("Content-Type", "application/x-www-form-urlencoded"); 
-
-        String postData = "vehicleID=" + vehicleID + "&availableSlot=" + String(availableSlot); 
-        int httpResponseCode = http.POST(postData); 
-
-        Serial.println("Data Sent! Response: " + String(httpResponseCode)); 
-
-        http.end(); 
-
-    } 
-    delay(2000); 
-
-} 
+#include <ESP8266WiFi.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SPI.h>
+#include <MFRC522.h>
+
+// RFID Module Pins
+#define SS_PIN 15
+#define RST_PIN 16
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// Define total parking slots
+#define TOTAL_SLOTS 5  
+#define POPULATION_SIZE 10  
+#define MUTATION_RATE 0.2  
+#define GENERATIONS 50  
+#define DISTANCE_THRESHOLD 40  // If distance < 40cm, spot is occupied
+
+// Ultrasonic sensor pins (for each slot)
+const int trigPins[TOTAL_SLOTS] = {5, 6, 7, 8, 9};  
+const int echoPins[TOTAL_SLOTS] = {10, 11, 12, 13, 14};
+
+// Define slot properties
+struct ParkingSlot {
+    int id;
+    int size;  
+    int distance;  
+    bool occupied;
+};
+
+// Parking slots
+ParkingSlot slots[TOTAL_SLOTS] = {
+    {1, 2, 5, false},  
+    {2, 3, 8, false},  
+    {3, 1, 3, false},  
+    {4, 4, 10, false}, 
+    {5, 2, 6, false}   
+};
+
+// Vehicle database
+struct Vehicle {
+    String rfidTag;
+    int type; // 1=Compact, 2=Sedan, 3=SUV, 4=Truck
+};
+
+Vehicle vehicleDB[] = {
+    {"123A4B", 1}, // Compact
+    {"567C8D", 2}, // Sedan
+    {"9EFG12", 3}, // SUV
+    {"34HIJK", 4}  // Truck
+};
+
+// GA population
+struct Chromosome {
+    int slotIndex;
+    float fitness;
+};
+
+// Initialize LCD
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Function to check if a slot is occupied using an ultrasonic sensor
+bool isSlotOccupied(int slotIndex) {
+    long duration;
+    int distance;
+
+    digitalWrite(trigPins[slotIndex], LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPins[slotIndex], HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPins[slotIndex], LOW);
+
+    duration = pulseIn(echoPins[slotIndex], HIGH);
+    distance = duration * 0.034 / 2;  // Convert to cm
+
+    return (distance < DISTANCE_THRESHOLD); // True if distance is less than threshold
+}
+
+// Function to update slot occupancy status
+void updateSlotOccupancy() {
+    for (int i = 0; i < TOTAL_SLOTS; i++) {
+        slots[i].occupied = isSlotOccupied(i);
+    }
+}
+
+// Function to get vehicle type from RFID tag
+int getVehicleType(String rfidTag) {
+    for (int i = 0; i < sizeof(vehicleDB) / sizeof(vehicleDB[0]); i++) {
+        if (vehicleDB[i].rfidTag == rfidTag) {
+            return vehicleDB[i].type;
+        }
+    }
+    return -1; // Unknown vehicle
+}
+
+// Fitness function
+float calculateFitness(Chromosome individual, int vehicleSize) {
+    int idx = individual.slotIndex;
+    float fitness = 100 - (slots[idx].distance * 2);
+    if (slots[idx].size < vehicleSize) fitness -= 30;
+    if (slots[idx].occupied) fitness -= 50;
+    return fitness;
+}
+
+// Genetic Algorithm main function (uses only available slots)
+int geneticAlgorithm(int vehicleSize) {
+    Chromosome population[POPULATION_SIZE];
+    int availableSlots[TOTAL_SLOTS];
+    int availableCount = 0;
+
+    // Store available slots
+    for (int i = 0; i < TOTAL_SLOTS; i++) {
+        if (!slots[i].occupied) {
+            availableSlots[availableCount++] = i;
+        }
+    }
+
+    if (availableCount == 0) return -1; // No available slots
+
+    // Initialize population
+    for (int i = 0; i < POPULATION_SIZE; i++) {
+        int randomIndex = random(availableCount);
+        population[i].slotIndex = availableSlots[randomIndex];
+        population[i].fitness = calculateFitness(population[i], vehicleSize);
+    }
+
+    // Run GA for several generations
+    for (int gen = 0; gen < GENERATIONS; gen++) {
+        Chromosome best1 = population[0], best2 = population[0];
+        for (int i = 1; i < POPULATION_SIZE; i++) {
+            if (population[i].fitness > best1.fitness) {
+                best2 = best1;
+                best1 = population[i];
+            } else if (population[i].fitness > best2.fitness) {
+                best2 = population[i];
+            }
+        }
+        
+        Chromosome newChild;
+        newChild.slotIndex = (best1.slotIndex + best2.slotIndex) / 2;
+        newChild.fitness = calculateFitness(newChild, vehicleSize);
+
+        if (random(100) < MUTATION_RATE * 100) {
+            newChild.slotIndex = availableSlots[random(availableCount)];
+            newChild.fitness = calculateFitness(newChild, vehicleSize);
+        }
+
+        population[POPULATION_SIZE - 1] = newChild;
+    }
+
+    return population[0].slotIndex;
+}
+
+// Setup
+void setup() {
+    Serial.begin(115200);
+    SPI.begin();
+    rfid.PCD_Init();
+    lcd.begin();
+    lcd.backlight();
+    lcd.setCursor(0, 0);
+    lcd.print("Smart Parking");
+
+    // Initialize ultrasonic sensors
+    for (int i = 0; i < TOTAL_SLOTS; i++) {
+        pinMode(trigPins[i], OUTPUT);
+        pinMode(echoPins[i], INPUT);
+    }
+}
+
+// Main loop
+void loop() {
+    updateSlotOccupancy(); // Update slot occupancy using sensors
+
+    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+        String rfidID = "";
+        for (byte i = 0; i < rfid.uid.size; i++) {
+            rfidID += String(rfid.uid.uidByte[i], HEX);
+        }
+        Serial.print("Detected Vehicle ID: ");
+        Serial.println(rfidID);
+
+        int vehicleType = getVehicleType(rfidID);
+        if (vehicleType == -1) {
+            Serial.println("Unknown vehicle!");
+            lcd.clear();
+            lcd.setCursor(0, 0);
+            lcd.print("Unknown Vehicle");
+        } else {
+            int bestSlot = geneticAlgorithm(vehicleType);
+
+            lcd.clear();
+            if (bestSlot == -1) {
+                lcd.setCursor(0, 0);
+                lcd.print("No Slot Available");
+                Serial.println("No Slot Available!");
+            } else {
+                lcd.setCursor(0, 0);
+                lcd.print("Best Slot: ");
+                lcd.print(slots[bestSlot].id);
+
+                Serial.print("Optimized Parking Slot: ");
+                Serial.println(slots[bestSlot].id);
+            }
+        }
+
+        rfid.PICC_HaltA();
+    }
+    delay(5000);
+}
